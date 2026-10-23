@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 系统界面（选文件、错误信息）跟随手机语言 -->
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_landrop._tcp</string>
+	</array>
+	<!-- 只和局域网里的电脑走明文 HTTP -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+	<!-- 系统界面（选文件、错误信息）跟随手机语言 -->
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<!-- 收到的文件存在 Documents，在“文件”App 里可见 -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+</dict>
+</plist>

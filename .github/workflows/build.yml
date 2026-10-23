@@ -1,9 +1,12 @@
-name: Build Apple Apps
+name: Build iOS App
 
 on:
   push:
     branches: [main]
+    # Windows 端和文档不需要 macOS 构建
+    paths-ignore: ['windows/**', '**.md']
   pull_request:
+    paths-ignore: ['windows/**', '**.md']
   workflow_dispatch:
 
 concurrency:
@@ -153,74 +156,3 @@ jobs:
           path: ${{ env.OUT }}/logs
           if-no-files-found: ignore
 
-  macos:
-    name: macOS
-    runs-on: macos-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Generate Xcode project
-        run: |
-          mkdir -p "$OUT/logs" "$OUT/screenshots"
-          brew install xcodegen >/dev/null
-          command -v xcbeautify >/dev/null || brew install xcbeautify >/dev/null
-          xcodegen generate
-
-      - name: Unit tests
-        run: |
-          set -o pipefail
-          xcodebuild test -project App.xcodeproj -scheme App-macOS \
-            -destination "platform=macOS" -derivedDataPath build/test \
-            2>&1 | tee "$OUT/logs/macos-test.log" | xcbeautify --renderer github-actions
-
-      - name: Build release app
-        run: |
-          set -o pipefail
-          xcodebuild build -project App.xcodeproj -scheme App-macOS -configuration Release \
-            -destination "generic/platform=macOS" -derivedDataPath build/release \
-            ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
-            2>&1 | tee "$OUT/logs/macos-build.log" | xcbeautify --renderer github-actions
-          APP=$(find build/release/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
-          NAME=$(basename "$APP" .app)
-          echo "APP=$APP" >> "$GITHUB_ENV"
-          codesign -dv "$APP" 2>&1 | head -5 || true
-          ditto -c -k --keepParent "$APP" "$OUT/$NAME-macOS.zip"
-          hdiutil create -volname "$NAME" -srcfolder "$APP" -ov -format UDZO "$OUT/$NAME-macOS.dmg"
-
-      - name: Launch, capture output and screenshot
-        continue-on-error: true
-        run: |
-          NAME=$(basename "$APP" .app)
-          # 直接运行可执行文件，print() 输出写到 macos-stdout.log
-          NSUnbufferedIO=YES "$APP/Contents/MacOS/$NAME" > "$OUT/logs/macos-stdout.log" 2>&1 &
-          sleep 8
-          osascript -e "tell application \"$NAME\" to activate" || true
-          sleep 2
-          screencapture -x "$OUT/screenshots/macos.png"
-          log show --last 2m --predicate "process == \"$NAME\"" --style compact > "$OUT/logs/macos-runtime.log" 2>&1 || true
-          mkdir -p "$OUT/logs/crashes"
-          find ~/Library/Logs/DiagnosticReports -newer project.yml \( -name "$NAME*.ips" -o -name "$NAME*.crash" \) \
-            -exec cp {} "$OUT/logs/crashes/" \; 2>/dev/null || true
-          pgrep -f "$NAME.app/Contents/MacOS" >/dev/null && echo "App 正在运行" \
-            || { echo "::warning::App 启动后没有在运行，可能崩溃了，看 crashes"; exit 1; }
-
-      - name: Upload macOS app
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: macos-app
-          path: |
-            ${{ env.OUT }}/*.zip
-            ${{ env.OUT }}/*.dmg
-          if-no-files-found: ignore
-
-      - name: Upload screenshots and logs
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: macos-screenshots-and-logs
-          path: |
-            ${{ env.OUT }}/screenshots
-            ${{ env.OUT }}/logs
-          if-no-files-found: ignore

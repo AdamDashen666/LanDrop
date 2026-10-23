@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 系统界面（选文件、错误信息）跟随手机语言 -->
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+	<key>NSExtension</key>
+	<dict>
+	<!-- 系统界面（选文件、错误信息）跟随手机语言 -->
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+		<key>NSExtensionAttributes</key>
+		<dict>
+	<!-- 系统界面（选文件、错误信息）跟随手机语言 -->
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+			<!-- 任何内容都能分享过来（自签用，不上架） -->
+			<key>NSExtensionActivationRule</key>
+			<string>TRUEPREDICATE</string>
+		</dict>
+	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_landrop._tcp</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+	<!-- 系统界面（选文件、错误信息）跟随手机语言 -->
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+</dict>
+</plist>
