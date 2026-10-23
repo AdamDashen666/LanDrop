@@ -14,7 +14,7 @@
 
 ## 当前状态
 - Windows：`windows/test.ps1` 全部通过；进度条截图确认；通知已送达通知中心（用户机器上没弹横幅，可能是免打扰）；单文件 exe 在 `windows/publish/`（不入库）。
-- iOS：首次 CI 单测和 iPhone/iPad 界面测试通过；"不走代理"改动后需再跑一次 CI。
+- iOS：CI（run 39990543239）单测和 iPhone/iPad 界面测试通过，unsigned IPA 含 `PlugIns/ShareExt.appex`；截图正常。
 - 未做真机测试（需用户自签安装 IPA）。
 
 ## 下一步
