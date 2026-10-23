@@ -9,3 +9,8 @@ DerivedData/
 *.p12
 *.mobileprovision
 *.cer
+
+# Windows 端构建输出
+bin/
+obj/
+windows/publish/

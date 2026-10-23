@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 通知里显示的程序名 -->
+    <AssemblyTitle>局域网互传</AssemblyTitle>
+    <Product>局域网互传</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Kestrel：非管理员也能监听局域网端口（HttpListener 不行） -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- 未打包的桌面程序发带按钮的通知并接收点击 -->
+    <PackageReference Include="Microsoft.Toolkit.Uwp.Notifications" Version="7.1.3" />
+  </ItemGroup>
+
+</Project>

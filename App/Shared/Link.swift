@@ -7,6 +7,13 @@ enum Proto {
     static let port: UInt16 = 47380
     static let service = "_landrop._tcp"
 
+    /// 不走手机上设置的 HTTP 代理，局域网直连
+    static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.connectionProxyDictionary = [:]
+        return URLSession(configuration: config)
+    }()
+
     /// 请求头只能放 ASCII：文件名、设备名用百分号编码，电脑端用 Uri.UnescapeDataString 还原
     static func encode(_ s: String) -> String {
         s.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
@@ -155,7 +162,7 @@ final class Link: ObservableObject {
             "X-Device-Id": device.identifierForVendor?.uuidString ?? UUID().uuidString,
             "X-Receive": receives ? "1" : "0",
         ], timeout: 90)
-        let (data, resp) = try await URLSession.shared.data(for: r)
+        let (data, resp) = try await Proto.session.data(for: r)
         try Self.check(resp)
         struct Reply: Decodable { let name: String; let token: String }
         let reply = try JSONDecoder().decode(Reply.self, from: data)
@@ -224,8 +231,8 @@ final class Link: ObservableObject {
                     if let resp { once.finish(.success(resp)) } else { once.finish(.failure(err ?? URLError(.unknown))) }
                 }
             }
-            let task = file.map { URLSession.shared.uploadTask(with: req, fromFile: $0, completionHandler: done) }
-                ?? URLSession.shared.uploadTask(with: req, from: data ?? Data(), completionHandler: done)
+            let task = file.map { Proto.session.uploadTask(with: req, fromFile: $0, completionHandler: done) }
+                ?? Proto.session.uploadTask(with: req, from: data ?? Data(), completionHandler: done)
             progress = task.progress
             task.resume()
         }
@@ -235,7 +242,7 @@ final class Link: ObservableObject {
     }
 
     private func pollOnce() async throws {
-        let (data, resp) = try await URLSession.shared.data(for: try Proto.request(address: address, path: "/inbox", token: token, timeout: 5))
+        let (data, resp) = try await Proto.session.data(for: try Proto.request(address: address, path: "/inbox", token: token, timeout: 5))
         try Self.check(resp)
         for item in try JSONDecoder().decode([InboxItem].self, from: data) {
             if item.kind == "text" {
@@ -244,7 +251,7 @@ final class Link: ObservableObject {
                 let url = try await download(item)
                 received.insert(Received(name: url.lastPathComponent, text: nil, file: url), at: 0)
             }
-            let (_, ack) = try await URLSession.shared.data(for: try Proto.request(address: address, path: "/ack/\(item.id)", method: "POST", token: token))
+            let (_, ack) = try await Proto.session.data(for: try Proto.request(address: address, path: "/ack/\(item.id)", method: "POST", token: token))
             try Self.check(ack)
             status = "收到 \(item.kind == "text" ? "文本" : item.name)"
             print("[LanDrop] received \(item.kind) \(item.name)")
@@ -258,7 +265,7 @@ final class Link: ObservableObject {
         status = "正在接收 \(name)"
         defer { progress = nil }
         return try await withCheckedThrowingContinuation { cont in
-            let task = URLSession.shared.downloadTask(with: req) { tmp, resp, err in
+            let task = Proto.session.downloadTask(with: req) { tmp, resp, err in
                 // 临时文件只在回调里有效，必须在这里移走
                 do {
                     guard let tmp, let resp else { throw err ?? URLError(.unknown) }
