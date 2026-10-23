@@ -294,6 +294,8 @@ final class Link: ObservableObject {
     nonisolated static func resolve(_ endpoint: NWEndpoint) async throws -> String {
         let params = NWParameters.tcp
         (params.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options)?.version = .v4
+        // 电脑也会广播代理软件的假 IP（198.18.x.x），手机上的 fake-ip 代理会“接住”它；不走 VPN 通道就只会连上真实的局域网地址
+        params.prohibitedInterfaceTypes = [.other]
         let conn = NWConnection(to: endpoint, using: params)
         defer { conn.stateUpdateHandler = nil; conn.cancel() }
         return try await withCheckedThrowingContinuation { cont in

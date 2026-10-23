@@ -9,7 +9,6 @@ struct PCPicker: View {
         Section {
             if link.paired {
                 Label("已配对：\(link.pcName)", systemImage: "checkmark.circle.fill")
-                    .accessibilityIdentifier("pairedPC")
             }
             ForEach(link.found.keys.sorted(), id: \.self) { name in
                 Button {

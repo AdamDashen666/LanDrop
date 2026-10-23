@@ -2,7 +2,7 @@
 // 协议（iOS 端见 App/Shared/Link.swift），请求头里的文本都做了百分号编码：
 //   POST /pair       头 X-Device-Name X-Device-Id X-Receive → 弹“允许/拒绝”通知，允许返回 {name, token}，否则 403
 //   POST /send       头 X-Token X-Kind(file|text) X-File-Name，body 为内容 → 存到接收目录并通知
-//   GET  /inbox      头 X-Token → 待发往该设备的 [{id, kind, name, size, text}]
+//   GET  /inbox      头 X-Token → 待发往该设备的 [{id, kind, name, text}]
 //   GET  /item/{id}  下载文件；POST /ack/{id} 确认收到后出队
 //   POST /local/send {device, paths, text} → 只接受本机回环，给资源管理器“发送到”启动的第二个进程用
 using System.Collections.Specialized;
@@ -21,7 +21,7 @@ using Microsoft.Toolkit.Uwp.Notifications;
 namespace LanDrop;
 
 record Device(string Name, string Id, bool Receive);
-record OutItem(string Id, string Kind, string Name, long Size, string? Text, string? Path);
+record OutItem(string Id, string Kind, string Name, string? Text, string? Path);
 record LocalSend(string Device, string[]? Paths, string? Text);
 
 /// 一次接收的进度，ProgressForm 每 100ms 读一次
@@ -201,7 +201,7 @@ static class Program
         var d = Auth(r);
         if (d == null) return Results.Unauthorized();
         lock (gate)
-            return Results.Json(outbox.GetValueOrDefault(d.Id)?.Select(i => new { i.Id, i.Kind, i.Name, i.Size, i.Text }).ToList() ?? []);
+            return Results.Json(outbox.GetValueOrDefault(d.Id)?.Select(i => new { i.Id, i.Kind, i.Name, i.Text }).ToList() ?? []);
     }
 
     static IResult Item(HttpRequest r, string id)
@@ -260,10 +260,10 @@ static class Program
             return;
         }
         var items = new List<OutItem>();
-        if (!string.IsNullOrEmpty(text)) items.Add(new OutItem(NewId(), "text", "文本", text.Length, text, null));
+        if (!string.IsNullOrEmpty(text)) items.Add(new OutItem(NewId(), "text", "文本", text, null));
         // shortcut: 文件夹会被跳过，要发文件夹时先压缩
         foreach (var p in paths ?? [])
-            if (File.Exists(p)) items.Add(new OutItem(NewId(), "file", Path.GetFileName(p), new FileInfo(p).Length, null, Path.GetFullPath(p)));
+            if (File.Exists(p)) items.Add(new OutItem(NewId(), "file", Path.GetFileName(p), null, Path.GetFullPath(p)));
         if (items.Count == 0) return;
         lock (gate)
         {
@@ -318,7 +318,8 @@ static class Program
         var text = isText ? File.ReadAllText(path) : "";
         Toast(b => b.AddArgument("path", path).AddArgument("text", isText ? "1" : "0")
             .AddText(isText ? $"收到 {from.Name} 的文本" : $"收到 {from.Name} 的文件")
-            .AddText(isText ? (text.Length > 200 ? text[..200] + "…" : text) : Path.GetFileName(path)) // 通知内容有 5KB 上限
+            // 通知内容有 5KB 上限；截断时不能把表情（两个 char）切开，否则通知会被系统拒收
+            .AddText(isText ? (text.Length > 200 ? text[..(char.IsHighSurrogate(text[199]) ? 199 : 200)] + "…" : text) : Path.GetFileName(path))
             .AddButton(new ToastButton().SetContent("复制").AddArgument("do", "copy"))
             .AddButton(new ToastButton().SetContent("打开目录").AddArgument("do", "open")));
     }

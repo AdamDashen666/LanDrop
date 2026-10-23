@@ -34,6 +34,8 @@ try {
     Check ((Send file '..\..\evil.txt' 'x').StatusCode -eq 200 -and (Test-Path "$recv\evil.txt") -and -not (Test-Path "$root\evil.txt")) '路径穿越被挡住'
     Check ((Send file 'b.txt' 'x' 'wrong').StatusCode -eq 401 -and -not (Test-Path "$recv\b.txt")) '错误 token 被拒'
     Check (-not (Get-ChildItem $recv -Filter '*.part' -Force)) '没有残留临时文件'
+    # 设备 id 会写进“发送到”快捷方式的参数，带空格等字符必须直接拒绝（不弹配对通知）
+    Check ((Invoke-WebRequest "$base/pair" -Method Post -SkipHttpErrorCheck -Headers @{ 'X-Device-Name' = 'x'; 'X-Device-Id' = 'a%20b'; 'X-Receive' = '1' }).StatusCode -eq 400) '配对拒绝非法设备 id'
 
     $lan = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' } | Select-Object -First 1).IPAddress
     $local = @{ device = 'test-device'; paths = @("$root\out.txt"); text = 'hi phone' } | ConvertTo-Json
