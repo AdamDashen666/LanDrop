@@ -1,79 +1,22 @@
-# apple-build-template
+# 局域网互传 LanDrop
 
-Build, test and package iOS / iPadOS / macOS apps from a Windows PC, without a Mac. Write Swift locally, `git push`, and GitHub Actions macOS runners do the rest. (中文说明见下方。)
+iPhone / iPad ⇄ Windows 在同一局域网里互传文件和文本，配对一次后不再询问。
 
-## What each build produces
+## Windows 端（`windows/`）
+- 运行 `LanDrop.exe`（需要 .NET 8 桌面运行时和 ASP.NET Core 运行时），常驻托盘。第一次运行 Windows 防火墙会询问，选“允许”（专用网络）。
+- 收到的东西放在 `下载\局域网互传`。传输超过 3 秒时左上角显示进度条；传完弹通知，可“复制”或“打开目录”。
+- 发往手机：资源管理器右键“发送到 → iPhone（局域网互传）”，或托盘菜单“发送剪贴板到”。手机上打开 App 就会收到（App 在前台时每 2 秒检查一次）。
+- 托盘菜单还有：打开接收目录、清除所有配对、退出。开机自启：把 exe 的快捷方式放进 `shell:startup`。
+- 构建：`dotnet publish windows/LanDrop -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o windows/publish`
+- 测试：`pwsh windows/test.ps1`（先退出正在运行的局域网互传）。
 
-- **iOS**: an unsigned IPA (`MyApp-unsigned.ipa`) that you sign with your own Apple ID (e.g. Sideloadly); also a signed IPA if you add a certificate.
-- **macOS**: an ad-hoc signed universal (arm64 + x86_64) app as `.zip` and `.dmg`.
-- **Tests**: unit tests on iOS and macOS; XCUITest UI tests on both an iPhone and an iPad simulator. If tests fail, no IPA is produced, but screenshots and logs are still uploaded.
-- **Debugging output**: launch screenshots, a screenshot for every UI-test step, the app's `print()` output, system logs and the app's crash reports.
+## iOS / iPadOS 端
+- GitHub Actions 构建，产物 `ios-app/LanDrop-unsigned.ipa`，自己签名安装。
+- 打开 App → 点发现的电脑配对（电脑上点“允许”）；发现不了就输入电脑 IP。
+- 发送：输入文本、选择文件、从相册选择；也可在别的 App 里用系统“分享” → 局域网互传（第一次用分享菜单要再配对一次）。
+- 从电脑收到的文件在 App 里可分享/存相册，也在“文件”App →“我的 iPhone”→“局域网互传”里。
 
-## Quick start
-
-```bash
-gh repo create MyApp --public --template AdamDashen666/apple-build-template --clone
-```
-
-1. In `project.yml`, set `APP_NAME`, `DISPLAY_NAME` and `BUNDLE_ID_BASE`.
-2. Write shared code in `App/Sources` (platform-only code in `App/iOS` or `App/macOS`) and replace `App/Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png` with your icon.
-3. Run `bash scripts/ci-run.sh`. It pushes, waits for the build, downloads the artifacts to `out/<run id>/`, and prints the failing lines if the build breaks.
-
-The Xcode project is generated on CI from `project.yml` by XcodeGen, so you never need Xcode locally. Optional cloud signing: `scripts\set-signing-secrets.ps1` stores your `.p12` certificate and `.mobileprovision` profile in GitHub Secrets.
-
-macOS runners are free and unlimited for public repositories; private repositories get about 200 macOS minutes a month.
-
----
-
-# 苹果打包模板（在 Windows 上做 iOS / iPadOS / macOS App）
-
-Windows 不能运行 Xcode。这个模板把编译、测试、打包都放到 GitHub Actions 的 macOS 机器上执行：
-在本地写 Swift 代码 → `git push` → 云端构建 → 下载产物。
-
-## 每次构建产出
-
-| 产物（Actions 页面 Artifacts） | 内容 |
-|---|---|
-| `ios-app` | `MyApp-unsigned.ipa`（未签名，可用爱思助手 / Sideloadly 用自己的 Apple ID 签名安装）；配置了证书时还有 `MyApp-signed.ipa`（可直接装到描述文件登记过的 iPhone/iPad） |
-| `ios-screenshots` | App 在 iPhone / iPad 模拟器上启动后的截图；`ui/` 下是界面测试每一步的截图；测试失败时 `test-attachments/` 里有失败瞬间的截图 |
-| `macos-app` | `MyApp-macOS.zip` / `.dmg`（ad-hoc 签名；首次打开需右键 →“打开”，或在“隐私与安全性”里允许） |
-| `ios-logs` / `macos-screenshots-and-logs` | 编译和测试日志、`*-stdout.log`（App 里 `print()` 的输出）、`*-runtime.log`（系统日志）、`crashes/`（崩溃报告） |
-
-单元测试（`Tests/`）在 iOS 和 macOS 上运行；界面自动化测试（`UITests/`，XCUITest）在 iPhone 和 iPad 模拟器上各跑一遍。测试失败则不产出 IPA，但截图和日志照样上传，方便排查。
-
-## 新建一个 App
-
-```bash
-gh repo create 我的App名 --public --template AdamDashen666/apple-build-template --clone
-```
-
-然后修改 `project.yml` 里的 `APP_NAME`、`DISPLAY_NAME`、`BUNDLE_ID_BASE`，在 `App/Sources` 里写代码，`App/Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png` 换成自己的图标。
-
-- 两个平台共用 `App/Sources`；只属于某个平台的代码放 `App/iOS` 或 `App/macOS`，或用 `#if os(iOS)`。
-- 单元测试放 `Tests/`；界面测试放 `UITests/`，继承 `UITestCase`，用 `accessibilityIdentifier` 找控件，`snap("步骤名")` 截图。
-
-## 构建并下载
-
-```bash
-bash scripts/ci-run.sh
-```
-
-推送、等待构建完成、把产物下载到 `out/<构建编号>/`，失败时打印出错的那几行。
-
-## 个人证书签名（可选）
-
-在仓库目录里运行一次（证书文件和密码只会上传到 GitHub Secrets，不会写进代码）：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\set-signing-secrets.ps1
-```
-
-需要 `.p12` 证书、它的密码和 `.mobileprovision` 描述文件。描述文件是通配（`TEAMID.*`）时保留原 bundle id，否则会自动改成描述文件要求的 bundle id。
-
-## 免费额度
-
-公开仓库使用 macOS 构建机免费且不限时长；私有仓库每月只有约 200 分钟 macOS 额度。
-
-## License / 许可证
-
-[MIT](LICENSE)
+## 已知限制
+- 局域网明文 HTTP，同一网络里能抓包的人可以拿到配对 token。
+- App 切到后台传输会中断；电脑程序退出后，还没被手机取走的待发队列会丢失。
+- 不发文件夹（先压缩）。
