@@ -76,6 +76,8 @@ static class Program
         _ = ui.Handle; // 让后台线程能 BeginInvoke 回 UI 线程
         ToastNotificationManagerCompat.OnActivated += OnToast;
         SyncSendTo();
+        // 开机自启动：每次启动都写一遍，exe 挪了位置也能跟上；用户可在任务管理器“启动应用”里关掉（那里的开关不受这里影响）
+        if (Home == null) Microsoft.Win32.Registry.SetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run", "LanDrop", $"\"{Environment.ProcessPath}\"");
 
         var menu = new ContextMenuStrip();
         menu.Opening += (_, e) => { BuildMenu(menu); e.Cancel = false; }; // 菜单为空时 Opening 默认是取消的

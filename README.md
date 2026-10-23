@@ -6,7 +6,8 @@ iPhone / iPad ⇄ Windows 在同一局域网里互传文件和文本，配对一
 - 运行 `LanDrop.exe`（需要 .NET 8 桌面运行时和 ASP.NET Core 运行时），常驻托盘。第一次运行 Windows 防火墙会询问，选“允许”（专用网络）。
 - 收到的东西放在 `下载\局域网互传`。传输超过 3 秒时左上角显示进度条；传完弹通知，可“复制”或“打开目录”。
 - 发往手机：资源管理器右键“发送到 → iPhone（局域网互传）”，或托盘菜单“发送剪贴板到”。手机上打开 App 就会收到（App 在前台时每 2 秒检查一次）。
-- 托盘菜单还有：打开接收目录、清除所有配对、退出。开机自启：把 exe 的快捷方式放进 `shell:startup`。
+- 托盘菜单还有：打开接收目录、清除所有配对、退出。
+- 运行一次后会开机自动启动（指向最后一次运行的 exe 位置）；不想要时在任务管理器 →“启动应用”里关掉 LanDrop。
 - 构建：`dotnet publish windows/LanDrop -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o windows/publish`
 - 测试：`pwsh windows/test.ps1`（先退出正在运行的局域网互传）。
 
