@@ -1,0 +1,118 @@
+# XcodeGen 项目描述：CI 在 macOS 上用它生成 App.xcodeproj（Windows 上无法生成 .xcodeproj）。
+# 新 App 一般只需改下面 settings.base 里的 APP_NAME（英文，无空格）/ DISPLAY_NAME / BUNDLE_ID_BASE / 版本号。
+# 目标名 App-iOS / App-macOS 和 scheme 名被 CI 引用，不要改。
+# Tests/ 放单元测试，UITests/ 放 iOS 界面自动化测试（XCUITest，CI 会在 iPhone 和 iPad 模拟器上各跑一遍）。
+name: App
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "16.0"
+    macOS: "13.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    APP_NAME: MyApp
+    DISPLAY_NAME: MyApp
+    BUNDLE_ID_BASE: com.example.myapp
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_CFBundleDisplayName: $(DISPLAY_NAME)
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    # 签名在 CI 里单独处理：iOS 先出未签名包再按需重签，macOS 用 ad-hoc 签名
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  App-iOS:
+    type: application
+    platform: iOS
+    sources:
+      - App/Sources
+      - App/Resources
+      - path: App/iOS
+        optional: true
+    settings:
+      base:
+        PRODUCT_NAME: $(APP_NAME)
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_BASE)
+        TARGETED_DEVICE_FAMILY: "1,2" # iPhone + iPad
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        CODE_SIGN_IDENTITY: ""
+
+  App-macOS:
+    type: application
+    platform: macOS
+    sources:
+      - App/Sources
+      - App/Resources
+      - path: App/macOS
+        optional: true
+    settings:
+      base:
+        PRODUCT_NAME: $(APP_NAME)
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_BASE)
+        CODE_SIGN_IDENTITY: "-" # ad-hoc，Apple 芯片上必须至少有 ad-hoc 签名才能运行
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        ENABLE_HARDENED_RUNTIME: NO
+
+  AppTests-iOS:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: App-iOS
+    settings:
+      base:
+        PRODUCT_NAME: $(APP_NAME)Tests
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_BASE).tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/$(APP_NAME).app/$(APP_NAME)
+        BUNDLE_LOADER: $(TEST_HOST)
+        CODE_SIGN_IDENTITY: ""
+
+  AppUITests-iOS:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: App-iOS
+    settings:
+      base:
+        PRODUCT_NAME: $(APP_NAME)UITests
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_BASE).uitests
+        TEST_TARGET_NAME: App-iOS
+        CODE_SIGN_IDENTITY: ""
+
+  AppTests-macOS:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests]
+    dependencies:
+      - target: App-macOS
+    settings:
+      base:
+        PRODUCT_NAME: $(APP_NAME)Tests
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_BASE).tests
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/$(APP_NAME).app/Contents/MacOS/$(APP_NAME)
+        BUNDLE_LOADER: $(TEST_HOST)
+        CODE_SIGN_IDENTITY: "-"
+
+schemes:
+  App-iOS:
+    build:
+      targets:
+        App-iOS: all
+    test:
+      targets: [AppTests-iOS, AppUITests-iOS]
+  App-macOS:
+    build:
+      targets:
+        App-macOS: all
+    test:
+      targets: [AppTests-macOS]

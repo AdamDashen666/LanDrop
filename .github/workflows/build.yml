@@ -1,0 +1,226 @@
+name: Build Apple Apps
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OUT: ${{ github.workspace }}/out
+
+jobs:
+  ios:
+    name: iOS / iPadOS
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Environment
+        run: |
+          sw_vers
+          xcodebuild -version
+          mkdir -p "$OUT/logs" "$OUT/screenshots"
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen >/dev/null
+          command -v xcbeautify >/dev/null || brew install xcbeautify >/dev/null
+          xcodegen generate
+
+      - name: Pick simulators
+        run: |
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/sims.json"
+          IPHONE=$(jq -r '[.devices | to_entries[] | select(.key|contains("iOS")) | .value[] | select(.name|startswith("iPhone"))] | last | .udid' "$RUNNER_TEMP/sims.json")
+          IPAD=$(jq -r '[.devices | to_entries[] | select(.key|contains("iOS")) | .value[] | select(.name|startswith("iPad"))] | last | .udid' "$RUNNER_TEMP/sims.json")
+          echo "IPHONE_UDID=$IPHONE" >> "$GITHUB_ENV"
+          echo "IPAD_UDID=$IPAD" >> "$GITHUB_ENV"
+          xcrun simctl list devices available | grep -E "$IPHONE|$IPAD"
+
+      - name: Unit + UI tests (iPhone & iPad simulators)
+        run: |
+          set -o pipefail
+          # TEST_RUNNER_ 前缀的变量会传给测试进程（去掉前缀），UI 测试的 snap() 把截图写到这里
+          export TEST_RUNNER_SCREENSHOT_DIR="$OUT/screenshots/ui"
+          xcodebuild test -project App.xcodeproj -scheme App-iOS \
+            -destination "id=$IPHONE_UDID" -destination "id=$IPAD_UDID" \
+            -derivedDataPath build/sim \
+            -resultBundlePath "$RUNNER_TEMP/ios-tests.xcresult" \
+            2>&1 | tee "$OUT/logs/ios-test.log" | xcbeautify --renderer github-actions
+
+      - name: Export test failure screenshots
+        if: failure()
+        run: |
+          # XCUITest 失败时自动截的图存在 xcresult 里，导出来
+          xcrun xcresulttool export attachments --path "$RUNNER_TEMP/ios-tests.xcresult" \
+            --output-path "$OUT/screenshots/test-attachments" || true
+
+      - name: Launch on simulators, capture output and screenshots
+        # 测试失败也照样启动截图，方便排查
+        if: success() || failure()
+        run: |
+          APP=$(find build/sim/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" ! -name "*-Runner.app" | head -1)
+          [ -n "$APP" ] || { echo "::warning::没有编译出模拟器 App，跳过启动"; exit 0; }
+          NAME=$(basename "$APP" .app)
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          for pair in "iphone:$IPHONE_UDID" "ipad:$IPAD_UDID"; do
+            name=${pair%%:*}; udid=${pair#*:}
+            xcrun simctl boot "$udid" || true
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl install "$udid" "$APP"
+            # print() 输出写到 <设备>-stdout.log；NSUnbufferedIO 让输出立即落盘
+            SIMCTL_CHILD_NSUnbufferedIO=YES xcrun simctl launch --terminate-running-process \
+              --stdout="$OUT/logs/$name-stdout.log" --stderr="$OUT/logs/$name-stdout.log" \
+              "$udid" "$BUNDLE_ID"
+            sleep 8
+            xcrun simctl io "$udid" screenshot "$OUT/screenshots/$name.png"
+            # 系统日志（os_log / Logger / 崩溃信息）
+            xcrun simctl spawn "$udid" log show --last 2m --predicate "process == \"$NAME\"" \
+              --style compact > "$OUT/logs/$name-runtime.log" 2>&1 || true
+            pgrep -f "$NAME.app/$NAME" >/dev/null \
+              || echo "::warning::$name 上 App 启动后没有在运行，可能崩溃了，看 ios-logs/crashes"
+            xcrun simctl shutdown "$udid" || true
+          done
+
+      - name: Collect crash reports
+        if: success() || failure()
+        run: |
+          # 只收集本 App 的崩溃报告（文件名以进程名开头），系统进程的忽略
+          APP=$(find build/sim/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" ! -name "*-Runner.app" | head -1)
+          NAME=$(basename "${APP:-none}" .app)
+          mkdir -p "$OUT/logs/crashes"
+          find ~/Library/Logs/DiagnosticReports -newer project.yml \( -name "$NAME*.ips" -o -name "$NAME*.crash" \) \
+            -exec cp {} "$OUT/logs/crashes/" \; 2>/dev/null || true
+          if ls "$OUT/logs/crashes" | grep -q .; then
+            echo "::warning::发现崩溃报告，见 ios-logs/crashes"; ls "$OUT/logs/crashes"
+          else
+            echo "没有崩溃报告"
+          fi
+
+      - name: Build device app (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build -project App.xcodeproj -scheme App-iOS -configuration Release \
+            -sdk iphoneos -destination "generic/platform=iOS" -derivedDataPath build/device \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            2>&1 | tee "$OUT/logs/ios-device-build.log" | xcbeautify --renderer github-actions
+          APP=$(find build/device/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          NAME=$(basename "$APP" .app)
+          echo "APP_NAME=$NAME" >> "$GITHUB_ENV"
+          echo "DEVICE_APP=$APP" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/unsigned/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/unsigned/Payload/"
+          (cd "$RUNNER_TEMP/unsigned" && zip -qry "$OUT/$NAME-unsigned.ipa" Payload)
+
+      - name: Sign IPA with personal certificate
+        env:
+          IOS_P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+          IOS_P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+        run: |
+          if [ -z "$IOS_P12_BASE64" ] || [ -z "$IOS_PROFILE_BASE64" ]; then
+            echo "::notice::没有配置签名 Secrets，跳过签名，只产出未签名 IPA"
+            exit 0
+          fi
+          bash scripts/resign-ipa.sh "$DEVICE_APP" "$OUT/$APP_NAME-signed.ipa"
+
+      - name: Upload iOS app
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-app
+          path: ${{ env.OUT }}/*.ipa
+          if-no-files-found: ignore
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-screenshots
+          path: ${{ env.OUT }}/screenshots
+          if-no-files-found: ignore
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-logs
+          path: ${{ env.OUT }}/logs
+          if-no-files-found: ignore
+
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Generate Xcode project
+        run: |
+          mkdir -p "$OUT/logs" "$OUT/screenshots"
+          brew install xcodegen >/dev/null
+          command -v xcbeautify >/dev/null || brew install xcbeautify >/dev/null
+          xcodegen generate
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test -project App.xcodeproj -scheme App-macOS \
+            -destination "platform=macOS" -derivedDataPath build/test \
+            2>&1 | tee "$OUT/logs/macos-test.log" | xcbeautify --renderer github-actions
+
+      - name: Build release app
+        run: |
+          set -o pipefail
+          xcodebuild build -project App.xcodeproj -scheme App-macOS -configuration Release \
+            -destination "generic/platform=macOS" -derivedDataPath build/release \
+            ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+            2>&1 | tee "$OUT/logs/macos-build.log" | xcbeautify --renderer github-actions
+          APP=$(find build/release/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          NAME=$(basename "$APP" .app)
+          echo "APP=$APP" >> "$GITHUB_ENV"
+          codesign -dv "$APP" 2>&1 | head -5 || true
+          ditto -c -k --keepParent "$APP" "$OUT/$NAME-macOS.zip"
+          hdiutil create -volname "$NAME" -srcfolder "$APP" -ov -format UDZO "$OUT/$NAME-macOS.dmg"
+
+      - name: Launch, capture output and screenshot
+        continue-on-error: true
+        run: |
+          NAME=$(basename "$APP" .app)
+          # 直接运行可执行文件，print() 输出写到 macos-stdout.log
+          NSUnbufferedIO=YES "$APP/Contents/MacOS/$NAME" > "$OUT/logs/macos-stdout.log" 2>&1 &
+          sleep 8
+          osascript -e "tell application \"$NAME\" to activate" || true
+          sleep 2
+          screencapture -x "$OUT/screenshots/macos.png"
+          log show --last 2m --predicate "process == \"$NAME\"" --style compact > "$OUT/logs/macos-runtime.log" 2>&1 || true
+          mkdir -p "$OUT/logs/crashes"
+          find ~/Library/Logs/DiagnosticReports -newer project.yml \( -name "$NAME*.ips" -o -name "$NAME*.crash" \) \
+            -exec cp {} "$OUT/logs/crashes/" \; 2>/dev/null || true
+          pgrep -f "$NAME.app/Contents/MacOS" >/dev/null && echo "App 正在运行" \
+            || { echo "::warning::App 启动后没有在运行，可能崩溃了，看 crashes"; exit 1; }
+
+      - name: Upload macOS app
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-app
+          path: |
+            ${{ env.OUT }}/*.zip
+            ${{ env.OUT }}/*.dmg
+          if-no-files-found: ignore
+
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-screenshots-and-logs
+          path: |
+            ${{ env.OUT }}/screenshots
+            ${{ env.OUT }}/logs
+          if-no-files-found: ignore

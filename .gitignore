@@ -1,0 +1,11 @@
+# Xcode 工程由 XcodeGen 在 CI 上生成
+*.xcodeproj/
+*.xcworkspace/
+build/
+out/
+DerivedData/
+.DS_Store
+# 签名材料绝不能提交
+*.p12
+*.mobileprovision
+*.cer
