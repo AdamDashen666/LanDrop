@@ -10,4 +10,5 @@
 - Info.plist 里生成不了的键（数组/字典，如 NSBonjourServices、NSExtension）放在 `App/Info.plist`、`App/ShareExt-Info.plist`，其余用 `INFOPLIST_KEY_*`。
 - `App/Shared` 同时编进 App 和分享扩展：不能用 `UIApplication` 等扩展禁用的 API。
 - 分享扩展不用 App Group（免费 Apple ID 自签容易签不上），所以它和 App 各自配对。
+- 分享扩展选 NSItemProvider 类型时要排除 public.url / public.file-url：它们也 conforms 到 public.data，loadFileRepresentation 取到的只是地址的 bplist（曾导致电脑收到名为“文件URL”的小文件）。
 - Kestrel 默认请求体上限 30MB，必须设 `MaxRequestBodySize = null`；HttpListener 监听非 localhost 需要管理员，所以用 Kestrel。

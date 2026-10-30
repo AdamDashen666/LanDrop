@@ -15,7 +15,7 @@
 ## 当前状态
 - Windows：`windows/test.ps1` 全部通过；进度条截图确认；通知已送达通知中心（用户机器上没弹横幅，可能是免打扰）；单文件 exe 在 `windows/publish/`（不入库）。
 - iOS：CI（run 39990543239）单测和 iPhone/iPad 界面测试通过，unsigned IPA 含 `PlugIns/ShareExt.appex`；截图正常。
-- 未做真机测试（需用户自签安装 IPA）。
+- 用户真机已在用。分享扩展从“文件”App 分享时曾收到“文件URL”（file-url 的 bplist），已改为直接读分享来的原文件，待真机复测。
 
 ## 下一步
 - 用户真机测试：发现/配对、收发、分享菜单、相册、大文件进度条、通知按钮、右键发送到。
