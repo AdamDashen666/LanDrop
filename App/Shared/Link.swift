@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import UIKit
+import UniformTypeIdentifiers
 
 /// 与电脑端（windows/LanDrop/Program.cs）约定的协议细节，都是纯函数，方便单元测试。
 enum Proto {
@@ -59,12 +60,21 @@ enum Proto {
         return url
     }
 
-    /// 复制到独立的临时子目录，保留原文件名；用完删 url.deletingLastPathComponent()
+    /// 分享来的文件内容类型。public.url / public.file-url 也算 public.data，取到的只是一段地址，要跳过
+    static func contentType(in registered: [String]) -> String? {
+        registered.first { id in
+            guard let t = UTType(id) else { return false }
+            return t.conforms(to: .data) && !t.conforms(to: .url)
+        }
+    }
+
+    /// 放到独立的临时子目录，保留原文件名；用完删 url.deletingLastPathComponent()。
+    /// 优先硬链接（大文件不占双份空间、瞬间完成），跨卷才复制
     static func tempCopy(of src: URL, name: String) throws -> URL {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dest = dir.appendingPathComponent(safeName(name))
-        try FileManager.default.copyItem(at: src, to: dest)
+        do { try FileManager.default.linkItem(at: src, to: dest) } catch { try FileManager.default.copyItem(at: src, to: dest) }
         return dest
     }
 }

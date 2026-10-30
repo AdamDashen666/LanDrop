@@ -36,6 +36,22 @@ final class ProtoTests: XCTestCase {
         XCTAssertEqual(Proto.fileName(suggested: nil, fallback: tmp), "abc.heic")
     }
 
+    func testContentTypeSkipsURLTypes() {
+        XCTAssertEqual(Proto.contentType(in: ["public.file-url", "public.data"]), "public.data")
+        XCTAssertEqual(Proto.contentType(in: ["public.url", "public.file-url", "public.jpeg"]), "public.jpeg")
+        XCTAssertNil(Proto.contentType(in: ["public.file-url"]))
+    }
+
+    func testTempCopyKeepsContent() throws {
+        let src = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data("hi".utf8).write(to: src)
+        defer { try? FileManager.default.removeItem(at: src) }
+        let copy = try Proto.tempCopy(of: src, name: "a.txt")
+        defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
+        XCTAssertEqual(copy.lastPathComponent, "a.txt")
+        XCTAssertEqual(try Data(contentsOf: copy), Data("hi".utf8))
+    }
+
     func testUniqueURLDoesNotOverwrite() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

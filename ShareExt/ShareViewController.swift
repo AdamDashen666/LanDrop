@@ -68,7 +68,14 @@ struct ShareView: View {
                 return try await link.send(text: text)
             }
         }
-        let type = p.registeredTypeIdentifiers.first { UTType($0)?.conforms(to: .data) == true } ?? UTType.data.identifier
+        // 文件 App 分享来的是原文件地址：能直接读就直接发，大文件不必先复制一份
+        if p.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier),
+           let url = await Self.fileURL(from: p) {
+            let ok = url.startAccessingSecurityScopedResource()
+            defer { if ok { url.stopAccessingSecurityScopedResource() } }
+            if FileManager.default.isReadableFile(atPath: url.path) { return try await link.send(file: url) }
+        }
+        guard let type = Proto.contentType(in: p.registeredTypeIdentifiers) else { throw CocoaError(.fileReadUnknown) }
         let suggested = p.suggestedName
         let file: URL = try await withCheckedThrowingContinuation { cont in
             _ = p.loadFileRepresentation(forTypeIdentifier: type) { url, err in
@@ -81,5 +88,14 @@ struct ShareView: View {
         }
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         try await link.send(file: file)
+    }
+
+    /// public.file-url 有时给 URL，有时给它的 bplist 数据
+    private static func fileURL(from p: NSItemProvider) async -> URL? {
+        switch try? await p.loadItem(forTypeIdentifier: UTType.fileURL.identifier) {
+        case let url as URL: return url.isFileURL ? url : nil
+        case let data as Data: return URL(dataRepresentation: data, relativeTo: nil).flatMap { $0.isFileURL ? $0 : nil }
+        default: return nil
+        }
     }
 }
